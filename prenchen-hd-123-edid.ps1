@@ -8,6 +8,8 @@ $OverrideValueName = '0'
 $BackupDir = 'C:\temp\prenchen-hd-123-edid-backups'
 $PhysicalWidthCm = 29
 $PhysicalHeightCm = 11
+$DpiValue = 2
+$ScaleFactorKeyPrefix = 'RTD00001_'
 
 function Show-Usage {
   @'
@@ -18,7 +20,7 @@ Usage:
 Also accepts the misspelled --unintall alias.
 
 Actions:
-  --install    Apply an EDID override for the Prenchen HD-123 / 12.3FHD.
+  --install    Apply an EDID override and persisted 150% scale preference for the Prenchen HD-123 / 12.3FHD.
   --uninstall  Remove the EDID override.
 
 After install or uninstall, disconnect and reconnect the monitor or restart Windows.
@@ -71,6 +73,38 @@ function Get-BaseEdidOverride {
   return $override
 }
 
+function Get-ScaleFactorKeys {
+  $scaleFactorRoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors'
+  if (-not (Test-Path -LiteralPath $scaleFactorRoot)) {
+    return @()
+  }
+
+  return @(Get-ChildItem -LiteralPath $scaleFactorRoot | Where-Object { $_.PSChildName.StartsWith($ScaleFactorKeyPrefix) })
+}
+
+function Set-ScalePreference {
+  $scaleKeys = Get-ScaleFactorKeys
+  if ($scaleKeys.Count -eq 0) {
+    Write-Warning "No Windows scale-factor key starting with $ScaleFactorKeyPrefix was found."
+    return
+  }
+
+  $perMonitorRoot = 'HKCU:\Control Panel\Desktop\PerMonitorSettings'
+  if (-not (Test-Path -LiteralPath $perMonitorRoot)) {
+    New-Item -Path 'HKCU:\Control Panel\Desktop' -Name 'PerMonitorSettings' -Force | Out-Null
+  }
+
+  foreach ($scaleKey in $scaleKeys) {
+    New-ItemProperty -LiteralPath $scaleKey.PSPath -Name 'DpiValue' -PropertyType DWord -Value $DpiValue -Force | Out-Null
+
+    $perMonitorPath = Join-Path $perMonitorRoot $scaleKey.PSChildName
+    if (-not (Test-Path -LiteralPath $perMonitorPath)) {
+      New-Item -Path $perMonitorRoot -Name $scaleKey.PSChildName -Force | Out-Null
+    }
+    New-ItemProperty -LiteralPath $perMonitorPath -Name 'DpiValue' -PropertyType DWord -Value $DpiValue -Force | Out-Null
+  }
+}
+
 function Install-Override {
   Invoke-Elevated '--install'
 
@@ -96,8 +130,12 @@ function Install-Override {
     }
   }
 
+  Set-ScalePreference
+
   Write-Host "Applied EDID override for Prenchen HD-123 / 12.3FHD."
   Write-Host "Physical size is now $PhysicalWidthCm cm x $PhysicalHeightCm cm in the override."
+  Write-Host 'Windows scale preference is now persisted as 150% for the corrected RTD monitor identity.'
+  Write-Host 'Windows can still cap the live scale at 100% while the monitor is active at 1920x720.'
   Write-Host 'Disconnect and reconnect the monitor or restart Windows for Windows to reload the EDID.'
 }
 
@@ -110,6 +148,12 @@ function Uninstall-Override {
     Write-Host 'Removed EDID override for Prenchen HD-123 / 12.3FHD.'
   } else {
     Write-Host 'No EDID override was present for Prenchen HD-123 / 12.3FHD.'
+  }
+  foreach ($scaleKey in Get-ScaleFactorKeys) {
+    $perMonitorPath = Join-Path 'HKCU:\Control Panel\Desktop\PerMonitorSettings' $scaleKey.PSChildName
+    if (Test-Path -LiteralPath $perMonitorPath) {
+      Remove-Item -LiteralPath $perMonitorPath -Recurse -Force
+    }
   }
   Write-Host 'Disconnect and reconnect the monitor or restart Windows for Windows to reload the EDID.'
 }

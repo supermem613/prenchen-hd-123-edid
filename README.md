@@ -2,7 +2,7 @@
 
 PowerShell installer for a Windows EDID override for the Prenchen HD-123 12.3FHD portable display.
 
-Some HD-123 units report malformed EDID identity data to Windows, including a physical size of `0 cm x 0 cm`. That can make Windows treat the display as a generic panel and prevent per-monitor scale changes from working correctly. This script keeps the monitor's existing timing data and overrides only the base EDID physical size bytes to `29 cm x 11 cm`, then recalculates the checksum.
+Some HD-123 units report malformed EDID identity data to Windows, including a physical size of `0 cm x 0 cm`. That can make Windows treat the display as a generic panel and prevent per-monitor scale changes from working correctly. This script keeps the monitor's existing timing data, overrides only the base EDID physical size bytes to `29 cm x 11 cm`, recalculates the checksum, and persists a 150% scale preference for the corrected RTD monitor identity.
 
 ## Use
 
@@ -14,7 +14,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\prenchen-hd-123-edid.ps1 -
 
 The script self-elevates with UAC when needed. After it finishes, disconnect and reconnect the monitor or restart Windows so Windows reloads the monitor EDID.
 
-To remove the override:
+Windows may still cap the live scale at 100% when the display is active at `1920 x 720`. In that mode Windows reports the display source scale range as `100%..100%`, so the persisted value cannot be applied live until Windows exposes a larger scale range for the active mode.
+
+To remove the override and the matching per-monitor scale preference:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\prenchen-hd-123-edid.ps1 --uninstall
@@ -34,6 +36,12 @@ It backs up the current EDID to:
 
 ```text
 C:\temp\prenchen-hd-123-edid-backups
+```
+
+It also sets `DpiValue = 2`, which maps to 150% scale, for Windows scale-factor keys starting with:
+
+```text
+RTD00001_
 ```
 
 ## Compatibility
